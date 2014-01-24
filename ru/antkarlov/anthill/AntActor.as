@@ -7,6 +7,7 @@ package ru.antkarlov.anthill
 	import flash.geom.Matrix;
 	
 	import ru.antkarlov.anthill.signals.AntSignal;
+	import ru.antkarlov.anthill.utils.AntColor;
 	
 	/**
 	 * Данный класс занимается воспроизведением и отображением растеризированных анимаций.
@@ -342,7 +343,7 @@ package ru.antkarlov.anthill
 		public function gotoAndStop(aFrame:Number):void
 		{
 			currentFrame = (aFrame <= 0) ? 1 : (aFrame > totalFrames) ? totalFrames : aFrame;
-			goto(currentFrame);
+			switchFrame(currentFrame);
 			stop();
 		}
 		
@@ -354,7 +355,7 @@ package ru.antkarlov.anthill
 		public function gotoAndPlay(aFrame:Number):void
 		{
 			currentFrame = (aFrame <= 0) ? 1 : (aFrame > totalFrames) ? totalFrames : aFrame;
-			goto(currentFrame);
+			switchFrame(currentFrame);
 			play();
 		}
 		
@@ -374,7 +375,7 @@ package ru.antkarlov.anthill
 		public function nextFrame(aUseSpeed:Boolean = false):void
 		{
 			aUseSpeed ? currentFrame += animationSpeed * AntG.timeScale : currentFrame++;
-			goto(currentFrame);
+			switchFrame(currentFrame);
 		}
 		
 		/**
@@ -385,7 +386,42 @@ package ru.antkarlov.anthill
 		public function prevFrame(aUseSpeed:Boolean = false):void
 		{
 			aUseSpeed ? currentFrame -= animationSpeed * AntG.timeScale : currentFrame--;
-			goto(currentFrame);
+			switchFrame(currentFrame);
+		}
+		
+		/**
+		 * @inheritDoc
+		 */
+		override public function hitTest(aX:Number, aY:Number, aPixelFlag:Boolean = false):Boolean
+		{
+			var res:Boolean = super.hitTest(aX, aY);
+			if (res && aPixelFlag)
+			{
+				var absOrigin:AntPoint = new AntPoint(Math.abs(origin.x), Math.abs(origin.y));
+				var dx:int = Math.floor(Math.abs((aX - x) / scaleX + absOrigin.x));
+				var dy:int = Math.floor(Math.abs((aY - y) / scaleY + absOrigin.y));
+				var p:AntPoint = AntMath.rotateDeg(dx, dy, absOrigin.x, absOrigin.y, -globalAngle);
+				res = false;
+				
+				if (_buffer != null)
+				{
+					res = (AntColor.extractAlpha(_buffer.getPixel32(p.x, p.y)) > 0);
+				}
+				else if (_pixels != null)
+				{
+					res = (AntColor.extractAlpha(_pixels.getPixel32(p.x, p.y)) > 0);
+				}
+			}
+			
+			return res;
+		}
+		
+		/**
+		 * @inheritDoc
+		 */
+		override public function hitTestPoint(aPoint:AntPoint, aPixelFlag:Boolean = false):Boolean
+		{
+			return hitTest(aPoint.x, aPoint.y, aPixelFlag);
 		}
 		
 		//---------------------------------------
@@ -434,7 +470,7 @@ package ru.antkarlov.anthill
 
 				if (globalAngle != 0)
 				{
-					_matrix.rotate(Math.PI * 2 * (globalAngle / 360));
+					_matrix.rotate(Math.PI * (globalAngle / 180));
 				}
 
 				_matrix.translate(_flashPoint.x - origin.x, _flashPoint.y - origin.y);
@@ -527,7 +563,7 @@ package ru.antkarlov.anthill
 		 * 
 		 * @param	aFrame	 Кадр на который необходимо перевести текущую анимацию.
 		 */
-		protected function goto(aFrame:Number):void
+		protected function switchFrame(aFrame:Number):void
 		{
 			var i:int = AntMath.floor(aFrame - 1);
 			i = (i <= 0) ? 0 : (i >= totalFrames - 1) ? totalFrames - 1 : i;

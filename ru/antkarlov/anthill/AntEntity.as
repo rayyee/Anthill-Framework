@@ -212,14 +212,7 @@ package ru.antkarlov.anthill
 		 * При рассчете прямоугольника, дочерние сущности не учитываются.
 		 */
 		public var bounds:AntRect;
-		
-		/**
-		 * Фактор прокручивания сущности. Используется для расчета положения сущности исходя из положения камеры. 
-		 * Если фактор прокручивания равен (1,1) то скорость прокручивания будет равна скорости движения камеры, то есть 1 к 1.
-		 * @default    (1,1)
-		 */
-		public var scrollFactor:AntPoint;
-		
+				
 		/**
 		 * Объем жизни сущности. Используйте на свое усмотрение.
 		 * Для нанесения урона можно использовать метод <code>hurt(aDamage:Number):Boolean</code>.
@@ -236,6 +229,24 @@ package ru.antkarlov.anthill
 		//---------------------------------------
 		// PROTECTED VARIABLES
 		//---------------------------------------
+		
+		/**
+		 * Коэффициент смещения сущности по горизонтали относительно смещения камеры.
+		 * Используется для расчета положения сущности исходя из положения камеры.
+		 * Если фактор прокручивания равен 1, то скорость прокручивания будет равна 
+		 * скорости движения камеры.
+		 * @default    1
+		 */
+		protected var _scrollFactorX:Number;
+		
+		/**
+		 * Коэффициент смещения сущности по вертикали относительно смещения камеры.
+		 * Используется для расчета положения сущности исходя из положения камеры.
+		 * Если фактор прокручивания равен 1, то скорость прокручивания будет равна 
+		 * скорости движения камеры.
+		 * @default    1
+		 */
+		protected var _scrollFactorY:Number;
 		
 		/**
 		 * Содержит старое значение положения сущности. 
@@ -272,6 +283,11 @@ package ru.antkarlov.anthill
 		 * Содержит порядок сортировки (по убываюни или по возрастанию).
 		 */
 		protected var _sortOrder:int;
+		
+		/**
+		 * Помошник для работы с вершинами.
+		 */
+		protected var _helperPoint:AntPoint;
 		
 		/**
 		 * Содержит номер объекта если он вложен в другую сущность.
@@ -336,16 +352,17 @@ package ru.antkarlov.anthill
 			}
 			
 			bounds = new AntRect();
-			scrollFactor = new AntPoint(1, 1);
-            
 			health = 1;
-
+			
+			_scrollFactorX = 1;
+			_scrollFactorY = 1;
 			_oldPosition = new AntPoint(-1, -1);
 			_oldSize = new AntPoint(-1, -1);
 			_oldScale = new AntPoint(-1, -1);
 			_oldAngle = -1;
 			_sortIndex = null;
 			_sortOrder = ASCENDING;
+			_helperPoint = new AntPoint();
 		}
 		
 		/**
@@ -615,7 +632,8 @@ package ru.antkarlov.anthill
 			// Обновляем положение добавляемой сущности и добавляем указатель на родителя (себя).
 			aEntity.parent = this;
 			aEntity.locate(globalX, globalY, globalAngle);
-			aEntity.scrollFactor.copyFrom(scrollFactor);
+			aEntity.scrollFactorX = scrollFactorX;
+			aEntity.scrollFactorY = scrollFactorY;
 			
 			// Ищем пустую ячейку.
 			var i:int = 0;
@@ -797,7 +815,7 @@ package ru.antkarlov.anthill
 			var i:int = 0;
 			while (i < numChildren)
 			{
-				entity = children[i++] as AntEntity;
+				entity = children[i] as AntEntity;
 				if (entity != null)
 				{
 					if (aDestroy)
@@ -809,6 +827,7 @@ package ru.antkarlov.anthill
 					entity._depth = -1;
 				}
 				children[i] = null;
+				i++;
 			}
 			
 			children.length = 0;
@@ -1144,14 +1163,19 @@ package ru.antkarlov.anthill
 		
 		/**
 		 * Проверяет попадает ли указанные координаты в прямоугольник сущности.
-		 * <p>Примечание: Для невизуальной сущности прямоугольник не рассчитывается. 
-		 * Данный метод корректно работает для визуальных объектов.</p>
+		 * 
+		 * <p>Примечание: В данной реализации при проверки пересечения сущности с точкой флаг aPixelFlag 
+		 * игнорируется так как сущность не имеет графического представления.</p>
+		 * 
+		 * <p>Внимание: Для невизуальной сущности прямоугольник не рассчитывается. 
+		 * Данный метод корректно работает только для визуальных объектов.</p>
 		 * 
 		 * @param	aX	 Положение точки по X.
 		 * @param	aY	 Положение точки по Y.
+		 * @param	aPixelFlag	 Определяет следует ли при проверке учитывать графический образ объекта.
 		 * @return		Вернет true если точка находится внутри прямоугольника сущности.
 		 */
-		public function hitTest(aX:Number, aY:Number):Boolean
+		public function hitTest(aX:Number, aY:Number, aPixelFlag:Boolean = false):Boolean
 		{
 			var n:int = vertices.length;
 			var res:Boolean = false;
@@ -1173,9 +1197,9 @@ package ru.antkarlov.anthill
 		 * 
 		 * @return		Возвращает true если точка попадает в прямоугольник кнопки.
 		 */
-		public function hitTestPoint(aPoint:AntPoint):Boolean
+		public function hitTestPoint(aPoint:AntPoint, aPixelFlag:Boolean = false):Boolean
 		{
-			return hitTest(aPoint.x, aPoint.y);
+			return hitTest(aPoint.x, aPoint.y, aPixelFlag);
 		}
 		
 		/**
@@ -1194,13 +1218,23 @@ package ru.antkarlov.anthill
 				aCamera = AntG.getCamera();
 			}
 			
-			var offX:Number = (scaleX < 0) ? width : 0;
-			var offY:Number = (scaleY < 0) ? height : 0;
+			var posX:Number = 0;
+			var posY:Number = 0;
 			
-			return bounds.intersects((aCamera.scroll.x - offX) * -1 * scrollFactor.x, 
-				(aCamera.scroll.y - offY) * -1 * scrollFactor.y,
-				aCamera.width / aCamera.zoom,
-				aCamera.height / aCamera.zoom);
+			if (aCamera.zoomStyle == AntCamera.ZOOM_STYLE_CENTER)
+			{
+				posX = aCamera.scroll.x * -1 * _scrollFactorX + (aCamera.width * 0.5);
+				posY = aCamera.scroll.y * -1 * _scrollFactorY + (aCamera.height * 0.5);
+				posX = posX - ((aCamera.width / aCamera.zoom) * 0.5);
+				posY = posY - ((aCamera.height / aCamera.zoom) * 0.5);
+			}
+			else
+			{
+				posX = aCamera.scroll.x * -1 * _scrollFactorX;
+				posY = aCamera.scroll.y * -1 * _scrollFactorY;
+			}
+			
+			return bounds.intersects(posX, posY, aCamera.width / aCamera.zoom, aCamera.height / aCamera.zoom);
 		}
 		
 		/**
@@ -1238,8 +1272,8 @@ package ru.antkarlov.anthill
 				aCamera = AntG.getCamera();
 			}
 			
-			aResult.x = aX + aCamera.scroll.x * scrollFactor.x;
-			aResult.y = aY + aCamera.scroll.y * scrollFactor.y;
+			aResult.x = aX + aCamera.scroll.x * _scrollFactorX;
+			aResult.y = aY + aCamera.scroll.y * _scrollFactorY;
 			return aResult;
 		}
 		
@@ -1371,9 +1405,13 @@ package ru.antkarlov.anthill
 			vertices[1].set(globalX + width * scaleX + origin.x * scaleX, globalY + origin.y * scaleY); // top right
 			vertices[2].set(globalX + width * scaleX + origin.x * scaleX, globalY + height * scaleY + origin.y * scaleY); // bottom right
 			vertices[3].set(globalX + origin.x * scaleX, globalY + height * scaleY + origin.y * scaleY); // bottom left			
+			
+			invertVertices();
+			
 			var tl:AntPoint = vertices[0];
 			var br:AntPoint = vertices[2];
 			bounds.set(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+
 			saveOldPosition();
 		}
 		
@@ -1411,6 +1449,8 @@ package ru.antkarlov.anthill
 			vertices[2].set(globalX + width * scaleX + origin.x * scaleX, globalY + height * scaleY + origin.y * scaleY); // bottom right
 			vertices[3].set(globalX + origin.x * scaleX, globalY + height * scaleY + origin.y * scaleY); // bottom left
 			
+			invertVertices();
+			
 			var dx:Number;
 			var dy:Number;
 			var p:AntPoint = vertices[0];
@@ -1438,6 +1478,42 @@ package ru.antkarlov.anthill
 			
 			bounds.set(minX, minY, maxX - minX, maxY - minY);
 			saveOldPosition();
+		}
+		
+		/**
+		 * Инвертирует вершины если необходимо.
+		 */
+		protected function invertVertices():void
+		{
+			// Если сущность отражена по горизонтали,
+			// то меняем левые и правые вершины местами.
+			if (scaleX < 0)
+			{
+				// top left -> top right
+				_helperPoint.copyFrom(vertices[0]);
+				vertices[0].copyFrom(vertices[1]);
+				vertices[1].copyFrom(_helperPoint);
+				
+				// bottom right -> bottom left
+				_helperPoint.copyFrom(vertices[2]);
+				vertices[2].copyFrom(vertices[3]);
+				vertices[3].copyFrom(_helperPoint);
+			}
+			
+			// Если сущность отражена по вертикали,
+			// то меняем верхние и нижние вершины местами.
+			if (scaleY < 0)
+			{
+				// top left -> bottom left
+				_helperPoint.copyFrom(vertices[0]);
+				vertices[0].copyFrom(vertices[3]);
+				vertices[3].copyFrom(_helperPoint);
+				
+				// top right -> bottom right
+				_helperPoint.copyFrom(vertices[1]);
+				vertices[1].copyFrom(vertices[2]);
+				vertices[2].copyFrom(_helperPoint);
+			}
 		}
 		
 		/**
@@ -1539,6 +1615,58 @@ package ru.antkarlov.anthill
 		//---------------------------------------
 		
 		/**
+		 * Определяет коэффициент смещения сущности по горизонтали относительно смещения камеры.
+		 * Используется для расчета положения сущности исходя из положения камеры.
+		 * Если фактор прокручивания равен 1, то скорость прокручивания будет равна 
+		 * скорости движения камеры.
+		 * @default    1
+		 */
+		public function get scrollFactorX():Number { return _scrollFactorX; }
+		public function set scrollFactorX(aValue:Number):void
+		{
+			if (_scrollFactorX != aValue)
+			{
+				_scrollFactorX = aValue;
+				var entity:AntEntity;
+				var i:int = 0;
+				while (i < numChildren)
+				{
+					entity = children[i++] as AntEntity;
+					if (entity != null)
+					{
+						entity.scrollFactorX = _scrollFactorX;
+					}
+				}
+			}
+		}
+		
+		/**
+		 * Коэффициент смещения сущности по вертикали относительно смещения камеры.
+		 * Используется для расчета положения сущности исходя из положения камеры.
+		 * Если фактор прокручивания равен 1, то скорость прокручивания будет равна 
+		 * скорости движения камеры.
+		 * @default    1
+		 */
+		public function get scrollFactorY():Number { return _scrollFactorY; }
+		public function set scrollFactorY(aValue:Number):void
+		{
+			if (_scrollFactorY != aValue)
+			{
+				_scrollFactorY = aValue;
+				var entity:AntEntity;
+				var i:int = 0;
+				while (i < numChildren)
+				{
+					entity = children[i++] as AntEntity;
+					if (entity != null)
+					{
+						entity.scrollFactorY = _scrollFactorY;
+					}
+				}
+			}
+		}
+		
+		/**
 		 * Возвращает глубину обработки и рендера для сущности.
 		 */
 		public function get depth():int
@@ -1557,10 +1685,10 @@ package ru.antkarlov.anthill
 		/**
 		 * Определяет реагирует ли сущность на позиционирование камеры.
 		 */
-		public function get isScrolled():Boolean { return (scrollFactor.x == 0 && scrollFactor.y == 0) ? false : true; }
-		public function set isScrolled(value:Boolean):void
+		public function get isScrolled():Boolean { return (_scrollFactorX == 0 && _scrollFactorY == 0) ? false : true; }
+		public function set isScrolled(aValue:Boolean):void
 		{
-			scrollFactor.x = scrollFactor.y = (value) ? 1 : 0;
+			scrollFactorX = scrollFactorY = (aValue) ? 1 : 0;
 		}
 		
 	}

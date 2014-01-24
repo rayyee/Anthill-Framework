@@ -41,7 +41,7 @@ package ru.antkarlov.anthill
 		/**
 		 * Версия обслуживания.
 		 */
-		public static const LIB_MAINTENANCE:uint = 2;
+		public static const LIB_MAINTENANCE:uint = 3;
 		
 		//---------------------------------------
 		// PUBLIC VARIABLES
@@ -85,7 +85,7 @@ package ru.antkarlov.anthill
 		/**
 		 * Как быстро протекает время в игровом мире. 
 		 * Изменяя этот параметр можно получить эффект слоу-мо.
-		 * @default    0.5
+		 * @default    1
 		 */
 		public static var timeScale:Number;
 		
@@ -114,10 +114,10 @@ package ru.antkarlov.anthill
 		public static var camera:AntCamera;
 		
 		/**
-		 * Список добавленных плагинов.
+		 * Менеджер плагинов.
 		 */
-		public static var plugins:Vector.<IPlugin>;
-				
+		public static var plugins:AntPluginManager;
+		
 		/**
 		 * Указатель на класс для работы с мышкой.
 		 */
@@ -275,7 +275,7 @@ package ru.antkarlov.anthill
 		 */
 		public static function init(aAnthill:Anthill):void
 		{
-			timeScale = 0.5;
+			timeScale = 1;
 			elapsed = 0.02;
 			maxElapsed = 0.0333333;
 			
@@ -288,7 +288,7 @@ package ru.antkarlov.anthill
 			heightHalf = stage.stageHeight * 0.5;
 			
 			cameras = [];
-			plugins = new <IPlugin>[];
+			plugins = new AntPluginManager;
 			
 			mouse = new AntMouse();
 			keys = new AntKeyboard();
@@ -350,99 +350,14 @@ package ru.antkarlov.anthill
 		}
 		
 		/**
-		 * Обработка классов звука.
+		 * Создает камеру по умолчанию.
 		 */
-		public static function updateSounds():void
+		public static function createDefaultCamera():void
 		{
-			sounds.update();
-		}
-		
-		/**
-		 * Обработка плагинов.
-		 */
-		public static function updatePlugins():void
-		{
-			var i:int = 0;
-			const n:int = plugins.length;
-			var plugin:IPlugin;
-			while (i < n)
+			if (_anthill != null)
 			{
-				plugin = plugins[i++] as IPlugin;
-				if (plugin != null)
-				{
-					plugin.update();
-				}
+				_anthill.createDefaultCamera();
 			}
-		}
-		
-		/**
-		 * Отрисовка плагинов.
-		 */
-		public static function drawPlugins(aCamera:AntCamera):void
-		{
-			var i:int = 0;
-			const n:int = plugins.length;
-			var plugin:IPlugin;
-			while (i < n)
-			{
-				plugin = plugins[i++] as IPlugin;
-				if (plugin != null)
-				{
-					plugin.draw(aCamera);
-				}
-			}
-		}
-		
-		/**
-		 * Добавляет плагин в список для обработки.
-		 * 
-		 * @param	aPlugin	 Плагин который необходимо добавить.
-		 * @param	aSingle	 Если true то один и тот же экземпляр плагина не может быть добавлен дважды.
-		 * @return		Возвращает указатель на добавленный плагин.
-		 */
-		public static function addPlugin(aPlugin:IPlugin, aSingle:Boolean = true):IPlugin
-		{
-			if (aSingle && plugins.indexOf(aPlugin) > -1)
-			{
-				return aPlugin;
-			}
-			
-			var i:int = 0;
-			const n:int = plugins.length;
-			while (i < n)
-			{
-				if (plugins[i] == null)
-				{
-					plugins[i] = aPlugin;
-					return aPlugin;
-				}
-				i++;
-			}
-			
-			plugins.push(aPlugin);
-			return aPlugin;
-		}
-		
-		/**
-		 * Удаляет плагин из списка для обработки.
-		 * 
-		 * @param	aPlugin	 Плагин который необходимо удалить.
-		 * @param	aSplice	 Если true то элемент массива в котором размещался плагин так же будет удален.
-		 * @default    Возвращает указатель на удаленный плагин.
-		 */
-		public static function removePlugin(aPlugin:IPlugin, aSplice:Boolean = false):IPlugin
-		{
-			var i:int = plugins.indexOf(aPlugin);
-			if (i >= 0 && i < plugins.length)
-			{
-				plugins[i] = null;
-				if (aSplice)
-				{
-					plugins.splice(i, 1);
-				}
-			}
-			
-			return aPlugin;
 		}
 		
 		/**
